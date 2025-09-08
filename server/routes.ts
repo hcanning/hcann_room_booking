@@ -9,6 +9,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // JWT configuration
   const JWT_SECRET = process.env.JWT_SECRET || 'university-booking-jwt-secret';
   const JWT_EXPIRES_IN = '24h';
+  
+  console.log('JWT_SECRET configured:', JWT_SECRET ? 'Yes' : 'No');
+  console.log('Environment:', process.env.NODE_ENV);
 
   // Authentication middleware
   const requireAuth = (req: Request & { adminId?: string }, res: Response, next: NextFunction) => {
@@ -28,13 +31,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   };
 
+  // Debug/health endpoint
+  app.get('/api/health', (req, res) => {
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      env: process.env.NODE_ENV,
+      hasJwtSecret: !!process.env.JWT_SECRET
+    });
+  });
+
   // Auth routes
   app.post('/api/auth/login', async (req, res) => {
     try {
+      console.log('Login attempt:', { username: req.body?.username, hasPassword: !!req.body?.password });
+      
       const { username, password } = loginSchema.parse(req.body);
       
       const admin = await storage.getAdminByUsername(username);
+      console.log('Admin found:', !!admin);
+      
       if (!admin || admin.password !== password) {
+        console.log('Authentication failed - invalid credentials');
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
@@ -43,6 +61,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         JWT_SECRET,
         { expiresIn: JWT_EXPIRES_IN }
       );
+      
+      console.log('Login successful for:', username);
 
       res.json({ 
         id: admin.id, 
@@ -50,6 +70,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token
       });
     } catch (error) {
+      console.error('Login error:', error);
       res.status(400).json({ message: "Invalid request data" });
     }
   });

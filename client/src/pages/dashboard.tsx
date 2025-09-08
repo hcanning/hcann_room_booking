@@ -77,6 +77,8 @@ export default function Dashboard() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
+      // Remove the JWT token from localStorage
+      localStorage.removeItem('authToken');
       window.location.reload();
     },
   });

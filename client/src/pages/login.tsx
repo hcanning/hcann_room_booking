@@ -31,7 +31,11 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       const response = await apiRequest("POST", "/api/auth/login", data);
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      // Store the JWT token in localStorage
+      if (data.token) {
+        localStorage.setItem('authToken', data.token);
+      }
       toast({
         title: "Success",
         description: "Logged in successfully",

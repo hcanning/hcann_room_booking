@@ -1,0 +1,57 @@
+[
+  {
+    "id": "room-1",
+    "name": "Conference Room A",
+    "building": "Science Center",
+    "floor": "Floor 3",
+    "capacity": 12,
+    "imageUrl": "https://images.unsplash.com/photo-1556761175-b413da4baf72?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
+    "equipment": ["65\" Display", "Video Conf", "Whiteboard"],
+    "isAccessible": true,
+    "description": "Modern conference room with state-of-the-art AV equipment"
+  },
+  {
+    "id": "room-2",
+    "name": "Lecture Hall B",
+    "building": "Science Center",
+    "floor": "Floor 1",
+    "capacity": 50,
+    "imageUrl": "https://images.unsplash.com/photo-1497366216548-37526070297c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
+    "equipment": ["Projector", "Audio System", "Computer"],
+    "isAccessible": true,
+    "description": "Large lecture hall with tiered seating"
+  },
+  {
+    "id": "room-3",
+    "name": "Study Room C",
+    "building": "Library",
+    "floor": "Floor 2",
+    "capacity": 6,
+    "imageUrl": "https://images.unsplash.com/photo-1560472354-b33ff0c44a43?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
+    "equipment": ["32\" Display", "Whiteboard"],
+    "isAccessible": true,
+    "description": "Intimate study space for small groups"
+  },
+  {
+    "id": "room-4",
+    "name": "Executive Room D",
+    "building": "Administration Building",
+    "floor": "Floor 5",
+    "capacity": 8,
+    "imageUrl": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
+    "equipment": ["75\" Display", "Video Conf", "Smart Board", "Computer"],
+    "isAccessible": true,
+    "description": "Premium executive meeting space"
+  },
+  {
+    "id": "room-5",
+    "name": "Collaboration Space E",
+    "building": "Student Union",
+    "floor": "Floor 2",
+    "capacity": 15,
+    "imageUrl": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&h=400",
+    "equipment": ["Interactive Display", "Movable Furniture", "Whiteboard"],
+    "isAccessible": true,
+    "description": "Flexible space for team collaboration"
+  }
+]

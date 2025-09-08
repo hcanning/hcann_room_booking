@@ -1,17 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { storage, type Admin } from "@/lib/storage";
 
 export function useAuth() {
-  const hasToken = !!localStorage.getItem('authToken');
-  
-  const { data: user, isLoading } = useQuery({
-    queryKey: ["/api/auth/user"],
-    retry: false,
-    enabled: hasToken, // Only make the request if we have a token
-  });
+  const [user, setUser] = useState<Admin | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const currentAdmin = storage.getCurrentAdmin();
+    setUser(currentAdmin);
+    setIsLoading(false);
+  }, []);
 
   return {
     user,
-    isLoading: hasToken ? isLoading : false,
-    isAuthenticated: hasToken && !!user,
+    isLoading,
+    isAuthenticated: !!user,
   };
 }

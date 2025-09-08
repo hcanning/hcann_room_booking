@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { storage } from "@/lib/storage";
 import { loginSchema, type LoginData } from "@shared/schema";
 
 interface LoginProps {
@@ -26,33 +25,36 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (data: LoginData) => {
-      const response = await apiRequest("POST", "/api/auth/login", data);
-      return response.json();
-    },
-    onSuccess: (data) => {
-      // Store the JWT token in localStorage
-      if (data.token) {
-        localStorage.setItem('authToken', data.token);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const onSubmit = async (data: LoginData) => {
+    setIsLoading(true);
+    
+    try {
+      const admin = storage.login(data.username, data.password);
+      
+      if (admin) {
+        toast({
+          title: "Success",
+          description: "Logged in successfully",
+        });
+        onLoginSuccess();
+      } else {
+        toast({
+          title: "Error",
+          description: "Invalid credentials",
+          variant: "destructive",
+        });
       }
-      toast({
-        title: "Success",
-        description: "Logged in successfully",
-      });
-      onLoginSuccess();
-    },
-    onError: (error) => {
+    } catch (error) {
       toast({
         title: "Error",
-        description: "Invalid credentials",
+        description: "Login failed",
         variant: "destructive",
       });
-    },
-  });
-
-  const onSubmit = (data: LoginData) => {
-    loginMutation.mutate(data);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -106,10 +108,10 @@ export default function Login({ onLoginSuccess }: LoginProps) {
               <Button 
                 type="submit" 
                 className="w-full"
-                disabled={loginMutation.isPending}
+                disabled={isLoading}
                 data-testid="button-login"
               >
-                {loginMutation.isPending ? "Signing In..." : "Sign In"}
+                {isLoading ? "Signing In..." : "Sign In"}
               </Button>
             </form>
           </Form>

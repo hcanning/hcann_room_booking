@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,145 +7,112 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
-import { isUnauthorizedError } from "@/lib/authUtils";
+import { storage, type Room, type Booking } from "@/lib/storage";
 import RoomCard from "@/components/room-card";
 import BookingModal from "@/components/booking-modal";
 import { User } from "lucide-react";
-
-interface Room {
-  id: string;
-  name: string;
-  building: string;
-  floor: string;
-  capacity: number;
-  imageUrl: string;
-  equipment: string[];
-  isAccessible: boolean;
-  description?: string;
-  todayAvailability: { time: string; available: boolean }[];
-}
-
-interface Booking {
-  id: string;
-  roomId: string;
-  userName: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  purpose?: string;
-  status: string;
-  roomName: string;
-}
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'rooms' | 'manage'>('rooms');
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
   const { toast } = useToast();
   const { user, isLoading: authLoading } = useAuth();
-  const queryClient = useQueryClient();
 
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
+      window.location.reload();
       return;
     }
-  }, [user, authLoading, toast]);
+  }, [user, authLoading]);
 
-  const { data: rooms, isLoading: roomsLoading } = useQuery({
-    queryKey: ["/api/rooms"],
-    enabled: !!user,
-  });
-
-  const { data: bookings, isLoading: bookingsLoading } = useQuery({
-    queryKey: ["/api/bookings"],
-    enabled: !!user && activeTab === 'manage',
-  });
-
-  const logoutMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", "/api/auth/logout");
-    },
-    onSuccess: () => {
-      // Remove the JWT token from localStorage
-      localStorage.removeItem('authToken');
-      window.location.reload();
-    },
-  });
-
-  const updateBookingMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const response = await apiRequest("PATCH", `/api/bookings/${id}`, { status });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
-      toast({
-        title: "Success",
-        description: "Booking updated successfully",
-      });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
+  // Load rooms on component mount
+  useEffect(() => {
+    const loadRooms = async () => {
+      try {
+        const roomsData = await storage.getRooms();
+        // Add today's availability to each room
+        const today = new Date().toISOString().split('T')[0];
+        const roomsWithAvailability = roomsData.map(room => ({
+          ...room,
+          todayAvailability: generateTimeSlots(room.id, today)
+        }));
+        setRooms(roomsWithAvailability);
+      } catch (error) {
+        console.error('Failed to load rooms:', error);
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: "Error",
+          description: "Failed to load rooms data",
           variant: "destructive",
         });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
+      } finally {
+        setRoomsLoading(false);
       }
-      toast({
-        title: "Error",
-        description: "Failed to update booking",
-        variant: "destructive",
-      });
-    },
-  });
+    };
 
-  const deleteBookingMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/bookings/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
-      toast({
-        title: "Success",
-        description: "Booking cancelled successfully",
+    loadRooms();
+  }, [toast]);
+
+  // Load bookings when manage tab is active
+  useEffect(() => {
+    if (activeTab === 'manage') {
+      const loadBookings = async () => {
+        setBookingsLoading(true);
+        try {
+          const bookingsData = await storage.getBookings();
+          // Add room names to bookings
+          const bookingsWithRoomNames = bookingsData.map(booking => {
+            const room = rooms.find(r => r.id === booking.roomId);
+            return {
+              ...booking,
+              roomName: room?.name || 'Unknown Room',
+              userName: booking.contactName,
+              status: 'confirmed'
+            };
+          });
+          setBookings(bookingsWithRoomNames);
+        } catch (error) {
+          console.error('Failed to load bookings:', error);
+          toast({
+            title: "Error",
+            description: "Failed to load bookings data",
+            variant: "destructive",
+          });
+        } finally {
+          setBookingsLoading(false);
+        }
+      };
+
+      loadBookings();
+    }
+  }, [activeTab, rooms, toast]);
+
+  // Generate time slots for a room on a specific date
+  const generateTimeSlots = (roomId: string, date: string) => {
+    const slots = [];
+    const hours = ['9:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'];
+    
+    for (const hour of hours) {
+      const isAvailable = storage.isRoomAvailable(roomId, date, hour, getEndTime(hour));
+      slots.push({
+        time: hour,
+        available: isAvailable
       });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to cancel booking",
-        variant: "destructive",
-      });
-    },
-  });
+    }
+    
+    return slots;
+  };
+
+  const getEndTime = (startTime: string) => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const endHours = hours + 1;
+    return `${endHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  };
 
   const handleBookRoom = (room: Room) => {
     setSelectedRoom(room);
@@ -154,7 +120,70 @@ export default function Dashboard() {
   };
 
   const handleLogout = () => {
-    logoutMutation.mutate();
+    storage.logout();
+    window.location.reload();
+  };
+
+  const handleDeleteBooking = async (id: string) => {
+    try {
+      await storage.deleteBooking(id);
+      // Refresh bookings list
+      const bookingsData = await storage.getBookings();
+      const bookingsWithRoomNames = bookingsData.map(booking => {
+        const room = rooms.find(r => r.id === booking.roomId);
+        return {
+          ...booking,
+          roomName: room?.name || 'Unknown Room',
+          userName: booking.contactName,
+          status: 'confirmed'
+        };
+      });
+      setBookings(bookingsWithRoomNames);
+      
+      // Refresh room availability
+      const today = new Date().toISOString().split('T')[0];
+      const roomsWithAvailability = rooms.map(room => ({
+        ...room,
+        todayAvailability: generateTimeSlots(room.id, today)
+      }));
+      setRooms(roomsWithAvailability);
+      
+      toast({
+        title: "Success",
+        description: "Booking cancelled successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to cancel booking",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBookingSuccess = async () => {
+    // Refresh rooms availability after successful booking
+    const today = new Date().toISOString().split('T')[0];
+    const roomsWithAvailability = rooms.map(room => ({
+      ...room,
+      todayAvailability: generateTimeSlots(room.id, today)
+    }));
+    setRooms(roomsWithAvailability);
+    
+    // If on manage tab, refresh bookings too
+    if (activeTab === 'manage') {
+      const bookingsData = await storage.getBookings();
+      const bookingsWithRoomNames = bookingsData.map(booking => {
+        const room = rooms.find(r => r.id === booking.roomId);
+        return {
+          ...booking,
+          roomName: room?.name || 'Unknown Room',
+          userName: booking.contactName,
+          status: 'confirmed'
+        };
+      });
+      setBookings(bookingsWithRoomNames);
+    }
   };
 
   if (authLoading) {
@@ -311,7 +340,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {rooms?.map((room: Room) => (
+                {rooms.map((room) => (
                   <RoomCard
                     key={room.id}
                     room={room}
@@ -364,7 +393,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="bg-card divide-y divide-border">
-                      {bookings?.map((booking: Booking) => (
+                      {bookings.map((booking) => (
                         <tr key={booking.id}>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
                             {booking.roomName}
@@ -379,54 +408,24 @@ export default function Dashboard() {
                             {booking.startTime} - {booking.endTime}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge
-                              variant={
-                                booking.status === 'confirmed' ? 'default' :
-                                booking.status === 'completed' ? 'secondary' : 'destructive'
-                              }
-                            >
-                              {booking.status}
+                            <Badge variant="default">
+                              confirmed
                             </Badge>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                            {booking.status === 'confirmed' && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteBookingMutation.mutate(booking.id)}
-                                  className="text-destructive hover:text-destructive/80"
-                                  data-testid={`button-cancel-${booking.id}`}
-                                >
-                                  Cancel
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => updateBookingMutation.mutate({ 
-                                    id: booking.id, 
-                                    status: 'completed' 
-                                  })}
-                                  className="text-primary hover:text-primary/80"
-                                  data-testid={`button-complete-${booking.id}`}
-                                >
-                                  Complete
-                                </Button>
-                              </>
-                            )}
-                            {booking.status === 'completed' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-primary hover:text-primary/80"
-                              >
-                                View Details
-                              </Button>
-                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteBooking(booking.id)}
+                              className="text-destructive hover:text-destructive/80"
+                              data-testid={`button-cancel-${booking.id}`}
+                            >
+                              Cancel
+                            </Button>
                           </td>
                         </tr>
                       ))}
-                      {bookings?.length === 0 && (
+                      {bookings.length === 0 && (
                         <tr>
                           <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
                             No bookings found
@@ -446,6 +445,7 @@ export default function Dashboard() {
         room={selectedRoom}
         isOpen={bookingModalOpen}
         onClose={() => setBookingModalOpen(false)}
+        onBookingSuccess={handleBookingSuccess}
       />
     </div>
   );

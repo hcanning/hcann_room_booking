@@ -1,4 +1,5 @@
 // Static storage for client-side only application
+import roomsData from '@/data/rooms.json';
 
 export interface Room {
   id: string;
@@ -41,14 +42,8 @@ class StaticStorage {
   private bookings: Booking[] = [];
 
   async initialize() {
-    // Load rooms from JSON file
-    try {
-      const response = await fetch('/data/rooms.json');
-      this.rooms = await response.json();
-    } catch (error) {
-      console.error('Failed to load rooms data:', error);
-      this.rooms = [];
-    }
+    // Load rooms from imported JSON data
+    this.rooms = roomsData as Room[];
 
     // Load bookings from localStorage
     const savedBookings = localStorage.getItem('roomBookings');

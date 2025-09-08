@@ -1,6 +1,6 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { storage } from "@/lib/storage";
 import { insertBookingSchema, type InsertBooking } from "@shared/schema";
 
 interface Room {
@@ -27,6 +27,7 @@ interface BookingModalProps {
   room: Room | null;
   isOpen: boolean;
   onClose: () => void;
+  onBookingSuccess?: () => void;
 }
 
 const timeSlots = [
@@ -37,9 +38,9 @@ const endTimeSlots = [
   "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"
 ];
 
-export default function BookingModal({ room, isOpen, onClose }: BookingModalProps) {
+export default function BookingModal({ room, isOpen, onClose, onBookingSuccess }: BookingModalProps) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<InsertBooking>({
     resolver: zodResolver(insertBookingSchema),
@@ -53,41 +54,57 @@ export default function BookingModal({ room, isOpen, onClose }: BookingModalProp
     },
   });
 
-  const bookingMutation = useMutation({
-    mutationFn: async (data: InsertBooking) => {
-      const response = await apiRequest("POST", "/api/bookings", data);
-      return response.json();
-    },
-    onSuccess: () => {
+  const onSubmit = async (data: InsertBooking) => {
+    if (!room) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Check if room is available at the selected time
+      const isAvailable = storage.isRoomAvailable(
+        room.id,
+        data.date,
+        data.startTime,
+        data.endTime
+      );
+      
+      if (!isAvailable) {
+        toast({
+          title: "Error",
+          description: "Time slot is already booked",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      await storage.createBooking({
+        roomId: room.id,
+        date: data.date,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        purpose: data.purpose || "",
+        attendeeCount: 1,
+        contactName: data.userName,
+        contactEmail: `${data.userName}@university.edu`,
+      });
+      
       toast({
         title: "Success",
         description: "Room booked successfully",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/rooms"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bookings"] });
+      
       onClose();
       form.reset();
-    },
-    onError: (error) => {
+      onBookingSuccess?.();
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message.includes("409") 
-          ? "Time slot is already booked" 
-          : "Failed to book room",
+        description: "Failed to book room",
         variant: "destructive",
       });
-    },
-  });
-
-  const onSubmit = (data: InsertBooking) => {
-    if (!room) return;
-    
-    const bookingData = {
-      ...data,
-      roomId: room.id,
-    };
-    
-    bookingMutation.mutate(bookingData);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (!room) return null;
@@ -219,10 +236,10 @@ export default function BookingModal({ room, isOpen, onClose }: BookingModalProp
               <Button 
                 type="submit" 
                 className="flex-1"
-                disabled={bookingMutation.isPending}
+                disabled={isLoading}
                 data-testid="button-confirm"
               >
-                {bookingMutation.isPending ? "Booking..." : "Confirm Booking"}
+                {isLoading ? "Booking..." : "Confirm Booking"}
               </Button>
             </div>
           </form>

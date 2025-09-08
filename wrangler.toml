@@ -1,0 +1,12 @@
+name = "room-booking-app"
+compatibility_date = "2023-08-14"
+
+[build]
+command = "npm run build"
+publish = "dist"
+
+[[env.production.vars]]
+JWT_SECRET = "your-production-jwt-secret-here"
+
+[env.production.build]
+command = "npm run build"

@@ -2,33 +2,30 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { loginSchema, insertBookingSchema } from "@shared/schema";
-import session from "express-session";
-import MemoryStore from "memorystore";
-
-const SessionStore = MemoryStore(session);
+import jwt from "jsonwebtoken";
+import type { Request, Response, NextFunction } from "express";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Session configuration
-  app.use(session({
-    secret: process.env.SESSION_SECRET || 'university-booking-secret-key',
-    store: new SessionStore({
-      checkPeriod: 86400000 // prune expired entries every 24h
-    }),
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: false, // Set to true in production with HTTPS
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-  }));
+  // JWT configuration
+  const JWT_SECRET = process.env.JWT_SECRET || 'university-booking-jwt-secret';
+  const JWT_EXPIRES_IN = '24h';
 
   // Authentication middleware
-  const requireAuth = (req: any, res: any, next: any) => {
-    if (!req.session.adminId) {
+  const requireAuth = (req: Request & { adminId?: string }, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+    if (!token) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    next();
+
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET) as { adminId: string; username: string };
+      req.adminId = decoded.adminId;
+      next();
+    } catch (error) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
   };
 
   // Auth routes
@@ -41,20 +38,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Invalid credentials" });
       }
 
-      req.session.adminId = admin.id;
-      res.json({ id: admin.id, username: admin.username });
+      const token = jwt.sign(
+        { adminId: admin.id, username: admin.username },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+      );
+
+      res.json({ 
+        id: admin.id, 
+        username: admin.username,
+        token
+      });
     } catch (error) {
       res.status(400).json({ message: "Invalid request data" });
     }
   });
 
   app.post('/api/auth/logout', (req, res) => {
-    req.session.destroy(() => {
-      res.json({ message: "Logged out successfully" });
-    });
+    // With JWT, logout is handled client-side by removing the token
+    res.json({ message: "Logged out successfully" });
   });
 
-  app.get('/api/auth/user', requireAuth, async (req: any, res) => {
+  app.get('/api/auth/user', requireAuth, async (req: Request & { adminId?: string }, res) => {
     try {
       const admin = await storage.getAdminByUsername('hcanning'); // Since we only have one admin
       if (!admin) {
